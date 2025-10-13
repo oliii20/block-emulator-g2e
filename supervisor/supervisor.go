@@ -95,7 +95,7 @@ func (d *Supervisor) NewSupervisor(ip string, pcc *params.ChainConfig, committee
 // message to measure the performances.
 func (d *Supervisor) handleBlockInfos(content []byte) {
 	bim := new(message.BlockInfoMsg)
-	err := json.Unmarshal(content, bim)
+	err := json.Unmarshal(content, bim) // 反序列化/解包
 	if err != nil {
 		log.Panic()
 	}

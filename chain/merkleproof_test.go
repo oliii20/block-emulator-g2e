@@ -45,7 +45,7 @@ func buildBlockChain() (TxProofResult, []byte) {
 	CurChain.PrintBlockChain()
 
 	// update blokchain
-	TxForProof := core.NewTransaction("00000000001", "00000000002", big.NewInt(1234), 126526, time.Now())
+	TxForProof := core.NewTransaction("00000000001", "00000000002", big.NewInt(1234), 126526, time.Now(), 1, 0, 1)
 	for i := 0; i < 4; i++ {
 		// add a special tx for further proof validation.
 		if i == 2 {
@@ -53,7 +53,7 @@ func buildBlockChain() (TxProofResult, []byte) {
 		}
 		// add txs
 		for j := 0; j < 1000; j++ {
-			txToAdd := core.NewTransaction("00000000001", "00000000002", big.NewInt(1000), uint64(i*1234+j+213), time.Now())
+			txToAdd := core.NewTransaction("00000000001", "00000000002", big.NewInt(1000), uint64(i*1234+j+213), time.Now(), 1, 0, 1)
 			if bytes.Equal(txToAdd.TxHash, TxForProof.TxHash) {
 				log.Panic(fmt.Errorf("conflict hash"))
 			}

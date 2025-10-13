@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"log"
 	"math/big"
+	"sort"
 	"sync"
 	"time"
 
@@ -32,6 +33,9 @@ type BlockChain struct {
 	Txpool       *core.TxPool        // the transaction pool
 	PartitionMap map[string]uint64   // the partition map which is defined by some algorithm can help account parition
 	pmlock       sync.RWMutex
+
+	// --- Game2Earn ---
+	G2EBook *G2EBook
 }
 
 // Get the transaction root, this root can be used to check the transactions
@@ -40,14 +44,14 @@ func GetTxTreeRoot(txs []*core.Transaction) []byte {
 	triedb := trie.NewDatabase(rawdb.NewMemoryDatabase())
 	transactionTree := trie.NewEmpty(triedb)
 	for _, tx := range txs {
-		transactionTree.Update(tx.TxHash, []byte{0})
+		transactionTree.Update(tx.TxHash, []byte{0}) // 插入交易
 	}
 	return transactionTree.Hash().Bytes()
 }
 
-// Get bloom filter
+// Get bloom filter //布隆过滤器，能快速判断一个元素是否在一个集合中
 func GetBloomFilter(txs []*core.Transaction) *bitset.BitSet {
-	bs := bitset.New(2048)
+	bs := bitset.New(2048) //2048 bits
 	for _, tx := range txs {
 		bs.Set(utils.ModBytes(tx.TxHash, 2048))
 	}
@@ -81,7 +85,7 @@ func (bc *BlockChain) GetUpdateStatusTrie(txs []*core.Transaction) common.Hash {
 	fmt.Printf("The len of txs is %d\n", len(txs))
 	// the empty block (length of txs is 0) condition
 	if len(txs) == 0 {
-		return common.BytesToHash(bc.CurrentBlock.Header.StateRoot)
+		return common.BytesToHash(bc.CurrentBlock.Header.StateRoot) // 转为common.Hash，固定32字节的哈希
 	}
 	// build trie from the triedb (in disk)
 	st, err := trie.New(trie.TrieID(common.BytesToHash(bc.CurrentBlock.Header.StateRoot)), bc.triedb)
@@ -97,15 +101,15 @@ func (bc *BlockChain) GetUpdateStatusTrie(txs []*core.Transaction) common.Hash {
 			// senderIn = true
 			// fmt.Printf("the sender %s is in this shard %d, \n", tx.Sender, bc.ChainConfig.ShardID)
 			// modify local accountstate
-			s_state_enc, _ := st.Get([]byte(tx.Sender))
+			s_state_enc, _ := st.Get([]byte(tx.Sender)) // 根据地址获取账户状态的编码
 			var s_state *core.AccountState
 			if s_state_enc == nil {
 				// fmt.Println("missing account SENDER, now adding account")
 				ib := new(big.Int)
-				ib.Add(ib, params.Init_Balance)
+				ib.Add(ib, params.Init_Balance) // 初始余额设置的很大
 				s_state = &core.AccountState{
 					Nonce:   uint64(i),
-					Balance: ib,
+					Balance: ib, // 账户状态居然不对应账户地址
 				}
 			} else {
 				s_state = core.DecodeAS(s_state_enc)
@@ -118,7 +122,31 @@ func (bc *BlockChain) GetUpdateStatusTrie(txs []*core.Transaction) common.Hash {
 			s_state.Deduct(tx.Value)
 			st.Update([]byte(tx.Sender), s_state.Encode())
 			cnt++
+
+			// 2) 如果是下注交易：写入下注账本，并“跳过”接收方入账
+			if tx.G2EEnabled {
+				meta := tx
+				// 关闭窗口检查：nowH <= targetH - beta
+				curH := bc.CurrentBlock.Header.Number
+				if meta.Height < uint64(curH)+uint64(params.G2E_Beta) {
+					// 目标过近 → 本交易无效（根据需要：要么回滚扣款，要么直接跳过）
+					// 这里演示直接回滚扣款并跳过
+					s_state.Deposit(tx.Value)
+					st.Update([]byte(tx.Sender), s_state.Encode())
+					cnt--
+					continue
+				}
+				// amt := new(big.Int)
+				// amt.SetString(meta.Value, 10)
+				arr := [2]uint64{meta.PairI, meta.PairJ}
+				bc.G2EBook.appendBet(meta.Height, arr, meta.Sender, meta.Value)
+
+				// 跳过接收方入账（下注不产生即时收入）
+				continue
+
+			}
 		}
+
 		// recipientIn := false
 		if bc.Get_PartitionMap(tx.Recipient) == bc.ChainConfig.ShardID || tx.HasBroker {
 			// fmt.Printf("the recipient %s is in this shard %d, \n", tx.Recipient, bc.ChainConfig.ShardID)
@@ -146,6 +174,55 @@ func (bc *BlockChain) GetUpdateStatusTrie(txs []*core.Transaction) common.Hash {
 	if cnt == 0 {
 		return common.BytesToHash(bc.CurrentBlock.Header.StateRoot)
 	}
+
+	// --- Game2Earn 清算：如果“下一个区块号 == 某 targetH”，则执行清算进入状态根 ---
+	nextBlockH := bc.CurrentBlock.Header.Number + 1
+	if eb, ok := bc.G2EBook.getEpoch(nextBlockH); ok {
+		// 选择获胜对（两种任选一种，默认简单确定性策略）
+		pairStar := chooseWinningPair(nextBlockH, eb) // 函数见下
+
+		// 计算 W, L
+		W := new(big.Int)
+		L := new(big.Int)
+		for pair, sum := range eb.SumByPair {
+			if pair == pairStar {
+				W.Add(W, sum)
+			} else {
+				L.Add(L, sum)
+			}
+		}
+		// q = L / W（定点或整数截断均可；演示用整数截断）
+		q := new(big.Int)
+		if W.Sign() > 0 {
+			q.Div(L, W)
+		} else {
+			q.SetUint64(0)
+		}
+
+		// 赢家分润（输家已在下注时扣款，不返还）
+		if W.Sign() > 0 {
+			for _, e := range eb.ByPair[pairStar] {
+				// gain = e.Amount * q
+				gain := new(big.Int).Mul(new(big.Int).Set(e.Amount), q)
+				// 赢家账户入账
+				r_state_enc, _ := st.Get([]byte(e.Player))
+				var r_state *core.AccountState
+				if r_state_enc == nil {
+					ib := new(big.Int)
+					ib.Add(ib, params.Init_Balance) // 或者 0，视你的系统初始化而定
+					r_state = &core.AccountState{Nonce: 0, Balance: ib}
+				} else {
+					r_state = core.DecodeAS(r_state_enc)
+				}
+				r_state.Deposit(gain)
+				st.Update([]byte(e.Player), r_state.Encode())
+				cnt++
+			}
+		}
+		// 本高度清算完毕，清理账本
+		bc.G2EBook.cleanup(uint64(nextBlockH))
+	}
+
 	rt, ns := st.Commit(false)
 	// if `ns` is nil, the `err = bc.triedb.Update(trie.NewWithNodeSet(ns))` will report an error.
 	if ns != nil {
@@ -167,9 +244,9 @@ func (bc *BlockChain) GenerateBlock(miner int32) *core.Block {
 	var txs []*core.Transaction
 	// pack the transactions from the txpool
 	if params.UseBlocksizeInBytes == 1 {
-		txs = bc.Txpool.PackTxsWithBytes(params.BlocksizeInBytes)
+		txs = bc.Txpool.PackTxsWithBytes(params.BlocksizeInBytes) // 按字节数打包交易
 	} else {
-		txs = bc.Txpool.PackTxs(bc.ChainConfig.BlockSize)
+		txs = bc.Txpool.PackTxs(bc.ChainConfig.BlockSize) // 按交易数打包交易
 	}
 
 	bh := &core.BlockHeader{
@@ -258,7 +335,9 @@ func NewBlockChain(cc *params.ChainConfig, db ethdb.Database) (*BlockChain, erro
 		Txpool:       core.NewTxPool(),
 		Storage:      storage.NewStorage(chainDBfp, cc),
 		PartitionMap: make(map[string]uint64),
+		G2EBook:      NewG2EBook(), // <--- 新增
 	}
+
 	curHash, err := bc.Storage.GetNewestBlockHash()
 	if err != nil {
 		fmt.Println("There is no existed blockchain in the database. ")
@@ -409,4 +488,24 @@ func (bc *BlockChain) PrintBlockChain() string {
 	res := fmt.Sprintf("%v\n", vals)
 	fmt.Println(res)
 	return res
+}
+
+// 简单确定性策略：按高度轮转选择 pair（可替换为 VRF/统计）
+// 要求：全网节点拿到相同输入就能得到相同 pair
+func chooseWinningPair(h uint64, eb *g2eEpochBook) [2]uint64 {
+	// 把已下注的 pair 收集起来，按字典序排序后取 (h mod len)
+	keys := make([][2]uint64, 0, len(eb.SumByPair))
+	for k := range eb.SumByPair {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i][0] != keys[j][0] {
+			return keys[i][0] < keys[j][0]
+		}
+		return keys[i][1] < keys[j][1]
+	})
+	if len(keys) == 0 {
+		return [2]uint64{0, 0}
+	}
+	return keys[int(h)%len(keys)]
 }

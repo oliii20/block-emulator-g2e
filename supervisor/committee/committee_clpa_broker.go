@@ -208,7 +208,7 @@ func (ccm *CLPACommitteeMod_Broker) MsgSendingControl() {
 	// all transactions are sent. keep sending partition message...
 	for !ccm.Ss.GapEnough() { // wait all txs to be handled
 		time.Sleep(time.Second)
-		if params.ShardNum > 1 && time.Since(ccm.clpaLastRunningTime) >= time.Duration(ccm.clpaFreq)*time.Second {
+		if time.Since(ccm.clpaLastRunningTime) >= time.Duration(ccm.clpaFreq)*time.Second {
 			ccm.clpaLock.Lock()
 			clpaCnt++
 			mmap, _ := ccm.clpaGraph.CLPA_Partition()
@@ -337,7 +337,7 @@ func (ccm *CLPACommitteeMod_Broker) handleBrokerType1Mes(brokerType1Megs []*mess
 	tx1s := make([]*core.Transaction, 0)
 	for _, brokerType1Meg := range brokerType1Megs {
 		ctx := brokerType1Meg.RawMeg.Tx
-		tx1 := core.NewTransaction(ctx.Sender, brokerType1Meg.Broker, ctx.Value, ctx.Nonce, time.Now())
+		tx1 := core.NewTransaction(ctx.Sender, brokerType1Meg.Broker, ctx.Value, ctx.Nonce, time.Now(), ctx.Height, ctx.PairI, ctx.PairJ)
 		tx1.OriginalSender = ctx.Sender
 		tx1.FinalRecipient = ctx.Recipient
 		tx1.RawTxHash = make([]byte, len(ctx.TxHash))
@@ -359,7 +359,7 @@ func (ccm *CLPACommitteeMod_Broker) handleBrokerType2Mes(brokerType2Megs []*mess
 	tx2s := make([]*core.Transaction, 0)
 	for _, mes := range brokerType2Megs {
 		ctx := mes.RawMeg.Tx
-		tx2 := core.NewTransaction(mes.Broker, ctx.Recipient, ctx.Value, ctx.Nonce, time.Now())
+		tx2 := core.NewTransaction(mes.Broker, ctx.Recipient, ctx.Value, ctx.Nonce, time.Now(), ctx.Height, ctx.PairI, ctx.PairJ)
 		tx2.OriginalSender = ctx.Sender
 		tx2.FinalRecipient = ctx.Recipient
 		tx2.RawTxHash = make([]byte, len(ctx.TxHash))
