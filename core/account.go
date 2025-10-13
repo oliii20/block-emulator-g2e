@@ -27,8 +27,11 @@ type AccountState struct {
 }
 
 // Reduce the balance of an account
-func (as *AccountState) Deduct(val *big.Int) bool {
-	if as.Balance.Cmp(val) < 0 {
+// func (接收者) 函数名(参数列表) 返回值列表 {
+// 函数体
+// }
+func (as *AccountState) Deduct(val *big.Int) bool { // AccountState 类型的一个方法 Deduct
+	if as.Balance.Cmp(val) < 0 { // compare two big.Int
 		return false
 	}
 	as.Balance.Sub(as.Balance, val)
@@ -44,7 +47,7 @@ func (s *AccountState) Deposit(value *big.Int) {
 func (as *AccountState) Encode() []byte {
 	var buff bytes.Buffer
 	encoder := gob.NewEncoder(&buff)
-	err := encoder.Encode(as)
+	err := encoder.Encode(as) // 将 as 编码到 buff 中 即将as结构体序列化为字节流
 	if err != nil {
 		log.Panic(err)
 	}
@@ -64,7 +67,7 @@ func DecodeAS(b []byte) *AccountState {
 }
 
 // Hash AccountState for computing the MPT Root
-func (as *AccountState) Hash() []byte {
+func (as *AccountState) Hash() []byte { // 传回一个字节切片
 	h := sha256.Sum256(as.Encode())
 	return h[:]
 }

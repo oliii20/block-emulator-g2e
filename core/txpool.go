@@ -25,9 +25,9 @@ func NewTxPool() *TxPool {
 
 // Add a transaction to the pool (consider the queue only)
 func (txpool *TxPool) AddTx2Pool(tx *Transaction) {
-	txpool.lock.Lock()
+	txpool.lock.Lock() // 添加互斥锁，防止多个 goroutine 同时修改 TxQueue
 	defer txpool.lock.Unlock()
-	if tx.Time.IsZero() {
+	if tx.Time.IsZero() { // 如果交易的时间是零值，则设置为当前时间
 		tx.Time = time.Now()
 	}
 	txpool.TxQueue = append(txpool.TxQueue, tx)
@@ -52,12 +52,12 @@ func (txpool *TxPool) AddTxs2Pool_Head(tx []*Transaction) {
 	txpool.TxQueue = append(tx, txpool.TxQueue...)
 }
 
-// Pack transactions for a proposal
+// Pack transactions for a proposal // 按数量打包交易
 func (txpool *TxPool) PackTxs(max_txs uint64) []*Transaction {
 	txpool.lock.Lock()
 	defer txpool.lock.Unlock()
-	txNum := max_txs
-	if uint64(len(txpool.TxQueue)) < txNum {
+	txNum := max_txs                         // max_txs 表一次最多打包多少交易
+	if uint64(len(txpool.TxQueue)) < txNum { // 如果交易池中的交易数量小于 txNum，则将 txNum 设置为交易池中的交易数量
 		txNum = uint64(len(txpool.TxQueue))
 	}
 	txs_Packed := txpool.TxQueue[:txNum]
@@ -65,7 +65,7 @@ func (txpool *TxPool) PackTxs(max_txs uint64) []*Transaction {
 	return txs_Packed
 }
 
-// Pack transaction for a proposal (use 'BlocksizeInBytes' to control)
+// Pack transaction for a proposal (use 'BlocksizeInBytes' to control)  // 按字节数打包交易
 func (txpool *TxPool) PackTxsWithBytes(max_bytes int) []*Transaction {
 	txpool.lock.Lock()
 	defer txpool.lock.Unlock()
@@ -73,7 +73,7 @@ func (txpool *TxPool) PackTxsWithBytes(max_bytes int) []*Transaction {
 	txNum := len(txpool.TxQueue)
 	currentSize := 0
 	for tx_idx, tx := range txpool.TxQueue {
-		currentSize += int(unsafe.Sizeof(*tx))
+		currentSize += int(unsafe.Sizeof(*tx)) // 计算交易的大小并累加
 		if currentSize > max_bytes {
 			txNum = tx_idx
 			break
@@ -85,7 +85,7 @@ func (txpool *TxPool) PackTxsWithBytes(max_bytes int) []*Transaction {
 	return txs_Packed
 }
 
-// Relay transactions
+// Relay transactions //designed for sharded blockchain, from Monoxide
 func (txpool *TxPool) AddRelayTx(tx *Transaction, shardID uint64) {
 	txpool.lock.Lock()
 	defer txpool.lock.Unlock()

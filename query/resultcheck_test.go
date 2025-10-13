@@ -51,12 +51,15 @@ func TestFinalResult(t *testing.T) {
 }
 
 func data2tx(data []string, nonce uint64) (*core.Transaction, bool) {
-	if data[6] == "0" && data[7] == "0" && len(data[3]) > 16 && len(data[4]) > 16 && data[3] != data[4] {
-		val, ok := new(big.Int).SetString(data[8], 10)
+	if data[3] == "0" && data[4] == "0" && len(data[0]) > 16 && len(data[1]) > 16 && data[0] != data[1] {
+		val, ok := new(big.Int).SetString(data[5], 10) //下注金额value
 		if !ok {
 			log.Panic("new int failed\n")
 		}
-		tx := core.NewTransaction(data[3][2:], data[4][2:], val, nonce, time.Now())
+		height, _ := strconv.ParseUint(data[6], 10, 64)
+		pair_i, _ := strconv.ParseUint(data[7], 10, 64)
+		pair_j, _ := strconv.ParseUint(data[8], 10, 64)
+		tx := core.NewTransaction(data[0][2:], data[1][2:], val, nonce, time.Now(), height, pair_i, pair_j)
 		return tx, true
 	}
 	return &core.Transaction{}, false
