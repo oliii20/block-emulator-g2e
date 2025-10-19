@@ -52,6 +52,7 @@ type Supervisor struct {
 	testMeasureMods []measure.MeasureModule
 
 	// diy, add more structures or classes here ...
+	dbMu sync.Mutex
 }
 
 func (d *Supervisor) NewSupervisor(ip string, pcc *params.ChainConfig, committeeMethod string, measureModNames ...string) {
@@ -122,57 +123,70 @@ func (d *Supervisor) handleBlockInfos(content []byte) {
 		measureMod.UpdateMeasureRecord(bim)
 	}
 	// add codes here ...
-	// 打印账户余额
-
-	// fmt.Printf("1\n")
-
-	accountsList := []string{"0x32be343b94f860124dc4fee278fdcbd38c102d88", "0x147184ef469ce9bba3d08af16f0b6d31cac35ac8", "0x5410c4c59a719eef345869c204ec8dcac2dfd718"}
-	shardId := utils.Addr2Shard(accountsList[1])
-	fmt.Printf("shard id is: %d\n", shardId)
-	if bim.SenderShardID == uint64(shardId) {
-		fmt.Println("Start reading")
-		mptfp := params.DatabaseWrite_path + fmt.Sprintf("mptDB/ldb/s%d/n%d", shardId, 0)
-		chaindbfp := params.DatabaseWrite_path + fmt.Sprintf("chainDB/S%d_N%d", shardId, 0)
-		accountState := query.QueryAccountState(chaindbfp, mptfp, uint64(shardId), 0, accountsList[1])
-		fmt.Printf("account %s's balance is: %v\n", accountsList[1], accountState.Balance)
+	accountsList := []string{
+		"32be343b94f860124dc4fee278fdcbd38c102d88",
+		"147184ef469ce9bba3d08af16f0b6d31cac35ac8",
+		"5410c4c59a719eef345869c204ec8dcac2dfd718",
 	}
 
-	// mptfp := params.DatabaseWrite_path + "mptDB/ldb/s0/n0"
-	// chaindbfp := params.DatabaseWrite_path + fmt.Sprintf("chainDB/S%d_N%d", 0, 0)
-	// accountState := query.QueryAccountState(chaindbfp, mptfp, 0, 0, "00000000001")
-	// fmt.Println("The account balance of 00000000001:", accountState.Balance)
+	shardId := utils.Addr2Shard(accountsList[0])
+	fmt.Printf("shard id is: %d\n", shardId)
 
-	// astates := d.chain.FetchAccounts(accountsList)
-	// for idx, state := range astates {
-	// 	fmt.Printf("Account %s Balance: %v\n", accountsList[idx], state.Balance)
-	// }
+	fmt.Println("Start reading")
+	mptfp := params.DatabaseWrite_path + fmt.Sprintf("mptDB/ldb/s%d/n%d", shardId, 0)
+	chaindbfp := params.DatabaseWrite_path + fmt.Sprintf("chainDB/S%d_N%d", shardId, 0)
 
-	// // 创建或追加写入 CSV 文件
-	// filePath := "balances.csv"
-	// file, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	// if err != nil {
-	// 	log.Fatalf("cannot open csv file: %v", err)
-	// }
-	// defer file.Close()
+	print("1\n")
 
-	// writer := csv.NewWriter(file)
-	// defer writer.Flush()
+	time.Sleep(500 * time.Millisecond)
 
-	// // 如果是新文件，可以写入表头
-	// info, _ := file.Stat()
-	// if info.Size() == 0 {
-	// 	writer.Write([]string{"Epoch", "Account", "Balance"})
-	// }
+	// 加锁，防止并发访问数据库
+	d.dbMu.Lock()
+	defer d.dbMu.Unlock()
 
-	// // 写入数据行
-	// for idx, state := range astates {
-	// 	writer.Write([]string{
-	// 		strconv.Itoa(bim.Epoch),
-	// 		accountsList[idx],
-	// 		state.Balance.String(), // 假设 Balance 是 big.Int
-	// 	})
-	// }
+	accountState := query.QueryAccountState(chaindbfp, mptfp, uint64(shardId), 0, accountsList[0])
+
+	if accountState == nil {
+		fmt.Println("❌ accountState == nil (读取失败)")
+	}
+	// fmt.Printf("account %s's balance is: %v\n", accountsList[0], accountState.Balance)
 }
+
+// mptfp := params.DatabaseWrite_path + "mptDB/ldb/s0/n0"
+// chaindbfp := params.DatabaseWrite_path + fmt.Sprintf("chainDB/S%d_N%d", 0, 0)
+// accountState := query.QueryAccountState(chaindbfp, mptfp, 0, 0, "00000000001")
+// fmt.Println("The account balance of 00000000001:", accountState.Balance)
+
+// astates := d.chain.FetchAccounts(accountsList)
+// for idx, state := range astates {
+// 	fmt.Printf("Account %s Balance: %v\n", accountsList[idx], state.Balance)
+// }
+
+// // 创建或追加写入 CSV 文件
+// filePath := "balances.csv"
+// file, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+// if err != nil {
+// 	log.Fatalf("cannot open csv file: %v", err)
+// }
+// defer file.Close()
+
+// writer := csv.NewWriter(file)
+// defer writer.Flush()
+
+// // 如果是新文件，可以写入表头
+// info, _ := file.Stat()
+// if info.Size() == 0 {
+// 	writer.Write([]string{"Epoch", "Account", "Balance"})
+// }
+
+// // 写入数据行
+// for idx, state := range astates {
+// 	writer.Write([]string{
+// 		strconv.Itoa(bim.Epoch),
+// 		accountsList[idx],
+// 		state.Balance.String(), // 假设 Balance 是 big.Int
+// 	})
+// }
 
 // read transactions from dataFile. When the number of data is enough,
 // the Supervisor will do re-partition and send partitionMSG and txs to leaders.

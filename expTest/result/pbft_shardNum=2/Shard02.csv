@@ -1,0 +1,6 @@
+Block Height,EpochID of this block,TxPool Size,# of all Txs in this block,# of Broker1 Txs in this block,# of Broker2 Txs in this block,TimeStamp - Propose (unixMill),TimeStamp - Commit (unixMill),"SUM of confirm latency (ms, All Txs)","SUM of confirm latency (ms, Broker1 Txs) (Duration: Broker1 proposed -> Broker1 Commit)","SUM of confirm latency (ms, Broker2 Txs) (Duration: Broker2 proposed -> Broker2 Commit)"
+1,0,1866,2000,2000,0,1760792333845,1760792333918,10911264,10911264,0
+2,0,0,1866,1866,0,1760792338837,1760792338887,19427519,19427519,0
+3,0,0,0,0,0,1760792343782,1760792343803,0,0,0
+4,0,0,0,0,0,1760792348782,1760792348807,0,0,0
+5,0,0,0,0,0,1760792353782,1760792353799,0,0,0

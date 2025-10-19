@@ -8,7 +8,10 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/trie"
+	// "sync"
 )
+
+// var DBLock sync.RWMutex
 
 func QueryAccountState(chainDBfp, mptfp string, ShardID, NodeID uint64, address string) *core.AccountState {
 	_, err := os.Stat(mptfp)

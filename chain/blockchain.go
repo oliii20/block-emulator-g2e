@@ -109,7 +109,7 @@ func (bc *BlockChain) GetUpdateStatusTrie(txs []*core.Transaction) common.Hash {
 				ib.Add(ib, params.Init_Balance) // 初始余额设置的很大
 				s_state = &core.AccountState{
 					Nonce:   uint64(i),
-					Balance: ib, // 账户状态居然不对应账户地址
+					Balance: ib, // 账户状态无存储账户地址
 				}
 			} else {
 				s_state = core.DecodeAS(s_state_enc)
