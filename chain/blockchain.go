@@ -454,6 +454,7 @@ func (bc *BlockChain) FetchAccounts(addrs []string) []*core.AccountState {
 		asenc, _ := st.Get([]byte(addr))
 		var state_a *core.AccountState
 		if asenc == nil {
+			fmt.Printf("************* Account %s not found in trie\n", addr)
 			ib := new(big.Int)
 			ib.Add(ib, params.Init_Balance)
 			state_a = &core.AccountState{

@@ -7,7 +7,6 @@ import (
 	"blockEmulator/message"
 	"blockEmulator/networks"
 	"blockEmulator/params"
-	"blockEmulator/query"
 	"blockEmulator/supervisor/committee"
 	"blockEmulator/supervisor/measure"
 	"blockEmulator/supervisor/signal"
@@ -51,8 +50,8 @@ type Supervisor struct {
 	// measure components
 	testMeasureMods []measure.MeasureModule
 
-	// diy, add more structures or classes here ...
-	dbMu sync.Mutex
+	// // diy, add more structures or classes here ...
+	// dbMu sync.Mutex
 }
 
 func (d *Supervisor) NewSupervisor(ip string, pcc *params.ChainConfig, committeeMethod string, measureModNames ...string) {
@@ -101,6 +100,33 @@ func (d *Supervisor) NewSupervisor(ip string, pcc *params.ChainConfig, committee
 	}
 }
 
+func (d *Supervisor) QueryForAcc(address string) {
+	fmt.Println("Start querying ...")
+	for {
+		time.Sleep(5 * time.Second)
+		fmt.Println("Start query")
+		sii := message.QueryACC{
+			Address: address,
+		}
+		sByte, err := json.Marshal(sii)
+		if err != nil {
+			log.Panic()
+		}
+		msg_send := message.MergeMessage(message.DQueryForAcc, sByte)
+		shard_id := utils.Addr2Shard(address)
+		go networks.TcpDial(msg_send, d.Ip_nodeTable[uint64(shard_id)][0])
+	}
+}
+
+func (d *Supervisor) handleReplyAcc(content []byte) {
+	bim := new(message.ReplyToAcc)
+	err := json.Unmarshal(content, bim)
+	if err != nil {
+		log.Panic()
+	}
+	fmt.Printf("AAAAAAAAAAAAAAAAAAAAA Account balance of %v is %v\n", bim.Address, bim.Balance)
+}
+
 // Supervisor received the block information from the leaders, and handle these
 // message to measure the performances.
 func (d *Supervisor) handleBlockInfos(content []byte) {
@@ -122,33 +148,33 @@ func (d *Supervisor) handleBlockInfos(content []byte) {
 	for _, measureMod := range d.testMeasureMods {
 		measureMod.UpdateMeasureRecord(bim)
 	}
-	// add codes here ...
-	accountsList := []string{
-		"32be343b94f860124dc4fee278fdcbd38c102d88",
-		"147184ef469ce9bba3d08af16f0b6d31cac35ac8",
-		"5410c4c59a719eef345869c204ec8dcac2dfd718",
-	}
+	// // add codes here ...
+	// accountsList := []string{
+	// 	"32be343b94f860124dc4fee278fdcbd38c102d88",
+	// 	"147184ef469ce9bba3d08af16f0b6d31cac35ac8",
+	// 	"5410c4c59a719eef345869c204ec8dcac2dfd718",
+	// }
 
-	shardId := utils.Addr2Shard(accountsList[0])
-	fmt.Printf("shard id is: %d\n", shardId)
+	// shardId := utils.Addr2Shard(accountsList[0])
+	// fmt.Printf("shard id is: %d\n", shardId)
 
-	fmt.Println("Start reading")
-	mptfp := params.DatabaseWrite_path + fmt.Sprintf("mptDB/ldb/s%d/n%d", shardId, 0)
-	chaindbfp := params.DatabaseWrite_path + fmt.Sprintf("chainDB/S%d_N%d", shardId, 0)
+	// fmt.Println("Start reading")
+	// mptfp := params.DatabaseWrite_path + fmt.Sprintf("mptDB/ldb/s%d/n%d", shardId, 0)
+	// chaindbfp := params.DatabaseWrite_path + fmt.Sprintf("chainDB/S%d_N%d", shardId, 0)
 
-	print("1\n")
+	// print("1\n")
 
-	time.Sleep(500 * time.Millisecond)
+	// time.Sleep(500 * time.Millisecond)
 
-	// 加锁，防止并发访问数据库
-	d.dbMu.Lock()
-	defer d.dbMu.Unlock()
+	// // 加锁，防止并发访问数据库
+	// d.dbMu.Lock()
+	// defer d.dbMu.Unlock()
 
-	accountState := query.QueryAccountState(chaindbfp, mptfp, uint64(shardId), 0, accountsList[0])
+	// accountState := query.QueryAccountState(chaindbfp, mptfp, uint64(shardId), 0, accountsList[0])
 
-	if accountState == nil {
-		fmt.Println("❌ accountState == nil (读取失败)")
-	}
+	// if accountState == nil {
+	// 	fmt.Println("❌ accountState == nil (读取失败)")
+	// }
 	// fmt.Printf("account %s's balance is: %v\n", accountsList[0], accountState.Balance)
 }
 
@@ -219,6 +245,8 @@ func (d *Supervisor) handleMessage(msg []byte) {
 	case message.CBlockInfo:
 		d.handleBlockInfos(content)
 		// add codes for more functionality
+	case message.DReplyToAcc:
+		d.handleReplyAcc(content)
 	default:
 		d.comMod.HandleOtherMessage(msg)
 		for _, mm := range d.testMeasureMods {

@@ -11,6 +11,8 @@ import (
 	"blockEmulator/params"
 	"blockEmulator/shard"
 	"bufio"
+	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -173,6 +175,31 @@ func NewPbftNode(shardID, nodeID uint64, pcc *params.ChainConfig, messageHandleT
 
 	return p
 }
+func (p *PbftConsensusNode) handleQueryForAcc(content []byte) {
+	ppmsg := new(message.QueryACC)
+	err := json.Unmarshal(content, ppmsg)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	res := p.CurChain.FetchAccounts([]string{ppmsg.Address})
+	resBalance := res[0].Balance
+	// fmt.Printf("*********************%s", ppmsg.Address)
+	// fmt.Printf("AAAA block height = %d", p.CurChain.CurrentBlock.Header.Number+1)
+	// fmt.Println("StateRoot:", p.CurChain.CurrentBlock.Header.StateRoot)
+
+	sii := message.ReplyToAcc{
+		Balance: resBalance.String(),
+		Address: ppmsg.Address,
+	}
+	sByte, err := json.Marshal(sii)
+	if err != nil {
+		log.Panic()
+	}
+	msg_send := message.MergeMessage(message.DReplyToAcc, sByte)
+	networks.TcpDial(msg_send, p.ip_nodeTable[params.SupervisorShard][0])
+	fmt.Println("Send done")
+}
 
 // handle the raw message, send it to corresponded interfaces
 func (p *PbftConsensusNode) handleMessage(msg []byte) {
@@ -198,6 +225,9 @@ func (p *PbftConsensusNode) handleMessage(msg []byte) {
 		p.handleRequestOldSeq(content)
 	case message.CSendOldrequest:
 		p.handleSendOldSeq(content)
+
+	case message.DQueryForAcc:
+		p.handleQueryForAcc(content)
 
 	case message.CStop:
 		p.WaitToStop()
